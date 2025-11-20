@@ -37,6 +37,7 @@ namespace Datagram_sockets
             textBoxNickname = new System.Windows.Forms.TextBox();
             buttonChangeNickname = new System.Windows.Forms.Button();
             labelNickname = new System.Windows.Forms.Label();
+            labelStatus = new System.Windows.Forms.Label();
             SuspendLayout();
             // 
             // button1
@@ -69,6 +70,14 @@ namespace Datagram_sockets
             textBoxMessage.Size = new System.Drawing.Size(600, 60);
             textBoxMessage.TabIndex = 3;
             textBoxMessage.KeyDown += textBoxMessage_KeyDown;
+            // 
+            // labelStatus
+            // 
+            labelStatus.AutoSize = true;
+            labelStatus.Location = new System.Drawing.Point(12, 395);
+            labelStatus.Name = "labelStatus";
+            labelStatus.Size = new System.Drawing.Size(0, 20);
+            labelStatus.TabIndex = 10;
             // 
             // listBoxUsers
             // 
@@ -122,6 +131,7 @@ namespace Datagram_sockets
             AutoScaleDimensions = new System.Drawing.SizeF(8F, 20F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             ClientSize = new System.Drawing.Size(832, 500);
+            Controls.Add(labelStatus);
             Controls.Add(buttonChangeNickname);
             Controls.Add(textBoxNickname);
             Controls.Add(labelNickname);
@@ -151,6 +161,7 @@ namespace Datagram_sockets
         private System.Windows.Forms.TextBox textBoxNickname;
         private System.Windows.Forms.Button buttonChangeNickname;
         private System.Windows.Forms.Label labelNickname;
+        private System.Windows.Forms.Label labelStatus;
     }
 }
 
