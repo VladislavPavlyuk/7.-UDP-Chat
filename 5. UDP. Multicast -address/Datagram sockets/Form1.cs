@@ -34,6 +34,19 @@ namespace Datagram_sockets
         public Form1()
         {
             InitializeComponent();
+            // Загружаем иконку приложения
+            try
+            {
+                string iconPath = System.IO.Path.Combine(Application.StartupPath, "app.ico");
+                if (System.IO.File.Exists(iconPath))
+                {
+                    this.Icon = new System.Drawing.Icon(iconPath);
+                }
+            }
+            catch
+            {
+                // Если не удалось загрузить иконку, используем иконку по умолчанию
+            }
             // Получим контекст синхронизации для текущего потока 
             uiContext = SynchronizationContext.Current;
             currentUserName = Environment.UserDomainName + @"\" + Environment.UserName;

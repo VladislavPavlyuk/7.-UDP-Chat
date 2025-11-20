@@ -108,6 +108,7 @@ namespace Datagram_sockets
             Controls.Add(listBoxMessages);
             Controls.Add(button1);
             FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
+            Icon = new System.Drawing.Icon("app.ico");
             Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             MaximizeBox = false;
             Name = "Form1";
