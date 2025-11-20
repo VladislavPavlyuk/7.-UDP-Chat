@@ -39,8 +39,6 @@ namespace Datagram_sockets
             buttonChangeNickname = new System.Windows.Forms.Button();
             labelNickname = new System.Windows.Forms.Label();
             labelStatus = new System.Windows.Forms.Label();
-            labelTimer = new System.Windows.Forms.Label();
-            timer1 = new System.Windows.Forms.Timer(components);
             SuspendLayout();
             // 
             // button1
@@ -129,27 +127,11 @@ namespace Datagram_sockets
             labelStatus.Size = new System.Drawing.Size(0, 20);
             labelStatus.TabIndex = 10;
             // 
-            // labelTimer
-            // 
-            labelTimer.AutoSize = true;
-            labelTimer.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point);
-            labelTimer.Location = new System.Drawing.Point(420, 20);
-            labelTimer.Name = "labelTimer";
-            labelTimer.Size = new System.Drawing.Size(94, 28);
-            labelTimer.TabIndex = 11;
-            labelTimer.Text = "00:00:00";
-            // 
-            // timer1
-            // 
-            timer1.Interval = 1000;
-            timer1.Tick += timer1_Tick;
-            // 
             // Form1
             // 
             AutoScaleDimensions = new System.Drawing.SizeF(8F, 20F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             ClientSize = new System.Drawing.Size(832, 500);
-            Controls.Add(labelTimer);
             Controls.Add(labelStatus);
             Controls.Add(buttonChangeNickname);
             Controls.Add(textBoxNickname);
@@ -165,6 +147,7 @@ namespace Datagram_sockets
             Name = "Form1";
             StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             Text = "UDP Chat";
+            Load += Form1_Load;
             ResumeLayout(false);
             PerformLayout();
         }
@@ -180,8 +163,6 @@ namespace Datagram_sockets
         private System.Windows.Forms.Button buttonChangeNickname;
         private System.Windows.Forms.Label labelNickname;
         private System.Windows.Forms.Label labelStatus;
-        private System.Windows.Forms.Label labelTimer;
-        private System.Windows.Forms.Timer timer1;
     }
 }
 

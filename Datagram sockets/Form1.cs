@@ -26,7 +26,7 @@ namespace Datagram_sockets
                 messageType = "chat"; // по умолчанию обычное сообщение
             }
         }
-        
+
         public SynchronizationContext uiContext;
         private Socket receiveSocket;
         private string currentUserName;
@@ -37,10 +37,9 @@ namespace Datagram_sockets
         private Dictionary<string, DateTime> sentMessages = new Dictionary<string, DateTime>(); // хеш сообщения -> время отправки
         private const int USER_TIMEOUT_SECONDS = 30;
         private const int MESSAGE_DEDUP_SECONDS = 10; // окно для предотвращения дублирования (увеличено для надежности)
-        private DateTime appStartTime; // время запуска приложения для таймера
         private CancellationTokenSource cancellationTokenSource; // для остановки бесконечных циклов
         private bool isReceiving = false; // флаг для предотвращения множественных вызовов WaitClientQuery
-        
+
         // Методы для вывода сообщений
         private void ShowError(string message)
         {
@@ -55,10 +54,10 @@ namespace Datagram_sockets
                         {
                             if (cancellationTokenSource == null || cancellationTokenSource.Token.IsCancellationRequested)
                                 return;
-                                
+
                             labelStatus.ForeColor = System.Drawing.Color.Red;
                             labelStatus.Text = timestampedMessage;
-                            
+
                             // Автоматически скрываем сообщение через 5 секунд
                             Task.Delay(5000, cancellationTokenSource.Token).ContinueWith(t =>
                             {
@@ -66,7 +65,7 @@ namespace Datagram_sockets
                                 {
                                     uiContext.Post(d2 =>
                                     {
-                                        if (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested && 
+                                        if (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested &&
                                             labelStatus.Text == timestampedMessage)
                                         {
                                             labelStatus.Text = "";
@@ -87,7 +86,7 @@ namespace Datagram_sockets
                 // Игнорируем ошибки, если UI еще не готов
             }
         }
-        
+
         private void ShowInfo(string message)
         {
             try
@@ -101,10 +100,10 @@ namespace Datagram_sockets
                         {
                             if (cancellationTokenSource == null || cancellationTokenSource.Token.IsCancellationRequested)
                                 return;
-                                
+
                             labelStatus.ForeColor = System.Drawing.Color.Green;
                             labelStatus.Text = timestampedMessage;
-                            
+
                             // Автоматически скрываем сообщение через 3 секунды
                             Task.Delay(3000, cancellationTokenSource.Token).ContinueWith(t =>
                             {
@@ -112,7 +111,7 @@ namespace Datagram_sockets
                                 {
                                     uiContext.Post(d2 =>
                                     {
-                                        if (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested && 
+                                        if (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested &&
                                             labelStatus.Text == timestampedMessage)
                                         {
                                             labelStatus.Text = "";
@@ -155,7 +154,7 @@ namespace Datagram_sockets
             currentUserName = Environment.UserDomainName + @"\" + Environment.UserName;
             currentNickname = currentUserName; // по умолчанию nickname = системное имя
             textBoxNickname.Text = currentNickname;
-            
+
             // Определяем локальный IP адрес для multicast
             try
             {
@@ -169,7 +168,7 @@ namespace Datagram_sockets
                         break;
                     }
                 }
-                
+
                 // Если не нашли, пробуем через подключение
                 if (string.IsNullOrEmpty(localIP) || localIP == "127.0.0.1")
                 {
@@ -185,27 +184,22 @@ namespace Datagram_sockets
             {
                 localIP = "127.0.0.1"; // fallback
             }
-            
+
             // Инициализируем свой nickname в словаре
             lock (userNicknames)
             {
                 userNicknames[localIP] = currentNickname;
             }
-            
+
             // Инициализируем CancellationTokenSource для управления задачами
             cancellationTokenSource = new CancellationTokenSource();
-            
-            // Инициализируем и запускаем таймер
-            appStartTime = DateTime.Now;
-            labelTimer.Text = "00:00:00";
-            timer1.Start();
-            
+
             try
             {
                 WaitClientQuery();
                 CheckUsersTimeout();
                 StartHeartbeat();
-                
+
                 // Отправляем уведомление о подключении с задержкой, чтобы сокет успел инициализироваться
                 Task.Delay(1500).ContinueWith(t => SendJoinNotification());
             }
@@ -214,20 +208,7 @@ namespace Datagram_sockets
                 ShowError($"Initialization error: {ex.Message}");
             }
         }
-        
-        // Обработчик события таймера
-        private void timer1_Tick(object sender, EventArgs e)
-        {
-            try
-            {
-                TimeSpan elapsed = DateTime.Now - appStartTime;
-                labelTimer.Text = $"{(int)elapsed.TotalHours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
-            }
-            catch
-            {
-                // Игнорируем ошибки обновления таймера
-            }
-        }
+
         // Multicast — это такая технология сетевой адресации, при которой сообщение доставляются сразу группе получателей
 
         // прием сообщения
@@ -238,7 +219,7 @@ namespace Datagram_sockets
             {
                 return;
             }
-            
+
             isReceiving = true;
             await Task.Run(() =>
             {
@@ -254,22 +235,22 @@ namespace Datagram_sockets
                     // Регистрируем multicast-адрес 235.0.0.0
                     receiveSocket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ip));
                     receiveSocket.Bind(ipEndPoint);
-                    
+
                     // Устанавливаем таймаут для ReceiveFrom, чтобы можно было периодически проверять CancellationToken
                     receiveSocket.ReceiveTimeout = 1000; // 1 секунда
-                    
+
                     while (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested)
                     {
                         try
                         {
                             // Проверяем отмену перед блокирующей операцией
                             cancellationTokenSource.Token.ThrowIfCancellationRequested();
-                            
+
                             EndPoint remote = new IPEndPoint(0x7F000000, 100);
                             byte[] arr = new byte[1024];
                             int len = receiveSocket.ReceiveFrom(arr, ref remote);
                             string clientIP = ((IPEndPoint)remote).Address.ToString();
-                            
+
                             Message m = null;
                             try
                             {
@@ -283,12 +264,12 @@ namespace Datagram_sockets
                                 ShowError($"Deserialize error: {deserializeEx.Message}");
                                 continue; // Пропускаем некорректное сообщение
                             }
-                            
+
                             if (m == null)
                             {
                                 continue; // Пропускаем если десериализация не удалась
                             }
-                            
+
                             // Определяем отображаемое имя пользователя
                             string displayName = m.user;
                             lock (userNicknames)
@@ -303,19 +284,19 @@ namespace Datagram_sockets
                                     displayName = m.user;
                                 }
                             }
-                            
+
                             // Проверяем, не было ли это сообщение уже отправлено нами (для предотвращения дублирования)
                             // Для собственных сообщений: используем словарь sentMessages для отслеживания отправленных сообщений
                             // Сообщение удаляется из словаря ТОЛЬКО после успешного добавления в UI
                             // Это гарантирует, что каждое сообщение будет показано хотя бы один раз
                             bool isOwnMessage = false;
                             string messageHash = "";
-                            
+
                             if (m.messageType == "chat" && clientIP == localIP)
                             {
                                 isOwnMessage = true;
                                 messageHash = $"{m.user}:{m.mes}";
-                                
+
                                 // Проверяем, есть ли это сообщение в словаре отправленных
                                 lock (sentMessages)
                                 {
@@ -324,7 +305,7 @@ namespace Datagram_sockets
                                         // Сообщение найдено в словаре - это наше отправленное сообщение, вернувшееся через multicast
                                         // Проверяем время отправки для предотвращения локального echo (очень редкий случай)
                                         TimeSpan elapsed = DateTime.Now - sentMessages[messageHash];
-                                        
+
                                         // Если прошло меньше 0.1 мс - это возможно локальный echo, пропускаем
                                         // Минимальный порог для максимальной надежности отображения
                                         if (elapsed.TotalMilliseconds < 0.1)
@@ -332,7 +313,7 @@ namespace Datagram_sockets
                                             // Очень свежее сообщение - пропускаем для предотвращения локального echo
                                             continue;
                                         }
-                                        
+
                                         // Прошло достаточно времени - это сообщение вернулось через multicast
                                         // НЕ удаляем из словаря здесь - удалим только после успешного добавления в UI
                                         // Это гарантирует, что сообщение будет показано даже при повторном получении
@@ -342,7 +323,7 @@ namespace Datagram_sockets
                                     // так как оно пришло через multicast и может быть важным
                                 }
                             }
-                            
+
                             // Обработка различных типов сообщений
                             if (m.messageType == "nickname_change")
                             {
@@ -352,9 +333,9 @@ namespace Datagram_sockets
                                     userNicknames[clientIP] = m.user; // новый nickname
                                     displayName = m.user;
                                 }
-                                
+
                                 string notificationText = $"[{DateTime.Now:HH:mm:ss}] *** {oldDisplayName} changed nickname to {m.user} ***";
-                                uiContext.Post(d => 
+                                uiContext.Post(d =>
                                 {
                                     if (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested)
                                     {
@@ -362,7 +343,7 @@ namespace Datagram_sockets
                                         listBoxMessages.TopIndex = listBoxMessages.Items.Count - 1;
                                     }
                                 }, null);
-                                
+
                                 // Обновляем список пользователей
                                 lock (users)
                                 {
@@ -376,7 +357,7 @@ namespace Datagram_sockets
                                     string userKey = m.user + " (" + clientIP + ")";
                                     users[userKey] = DateTime.Now;
                                 }
-                                
+
                                 UpdateUsersList();
                             }
                             else if (m.messageType == "join")
@@ -386,29 +367,29 @@ namespace Datagram_sockets
                                 {
                                     continue;
                                 }
-                                
+
                                 lock (userNicknames)
                                 {
                                     userNicknames[clientIP] = m.user;
                                 }
-                                
-                            string notificationText = $"[{DateTime.Now:HH:mm:ss}] *** {m.user} joined the chat ***";
-                            uiContext.Post(d => 
-                            {
-                                if (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested)
+
+                                string notificationText = $"[{DateTime.Now:HH:mm:ss}] *** {m.user} joined the chat ***";
+                                uiContext.Post(d =>
                                 {
-                                    listBoxMessages.Items.Add(notificationText);
-                                    listBoxMessages.TopIndex = listBoxMessages.Items.Count - 1;
-                                }
-                            }, null);
-                                
+                                    if (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested)
+                                    {
+                                        listBoxMessages.Items.Add(notificationText);
+                                        listBoxMessages.TopIndex = listBoxMessages.Items.Count - 1;
+                                    }
+                                }, null);
+
                                 // Добавляем пользователя в список
                                 string userKey = m.user + " (" + clientIP + ")";
                                 lock (users)
                                 {
                                     users[userKey] = DateTime.Now;
                                 }
-                                
+
                                 UpdateUsersList();
                             }
                             else if (m.messageType == "leave")
@@ -418,17 +399,17 @@ namespace Datagram_sockets
                                 {
                                     continue;
                                 }
-                                
-                            string notificationText = $"[{DateTime.Now:HH:mm:ss}] *** {displayName} left the chat ***";
-                            uiContext.Post(d => 
-                            {
-                                if (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested)
+
+                                string notificationText = $"[{DateTime.Now:HH:mm:ss}] *** {displayName} left the chat ***";
+                                uiContext.Post(d =>
                                 {
-                                    listBoxMessages.Items.Add(notificationText);
-                                    listBoxMessages.TopIndex = listBoxMessages.Items.Count - 1;
-                                }
-                            }, null);
-                                
+                                    if (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested)
+                                    {
+                                        listBoxMessages.Items.Add(notificationText);
+                                        listBoxMessages.TopIndex = listBoxMessages.Items.Count - 1;
+                                    }
+                                }, null);
+
                                 // Удаляем пользователя из списка
                                 lock (users)
                                 {
@@ -438,12 +419,12 @@ namespace Datagram_sockets
                                         users.Remove(userKey);
                                     }
                                 }
-                                
+
                                 lock (userNicknames)
                                 {
                                     userNicknames.Remove(clientIP);
                                 }
-                                
+
                                 UpdateUsersList();
                             }
                             else if (m.messageType == "heartbeat")
@@ -453,19 +434,19 @@ namespace Datagram_sockets
                                 {
                                     continue; // Пропускаем собственные heartbeat
                                 }
-                                
+
                                 lock (userNicknames)
                                 {
                                     userNicknames[clientIP] = m.user;
                                 }
-                                
+
                                 // Обновляем время последней активности пользователя
                                 string userKey = m.user + " (" + clientIP + ")";
                                 lock (users)
                                 {
                                     users[userKey] = DateTime.Now;
                                 }
-                                
+
                                 UpdateUsersList();
                             }
                             else
@@ -477,22 +458,22 @@ namespace Datagram_sockets
                                 {
                                     users[userKey] = DateTime.Now;
                                 }
-                                
+
                                 // Обновляем список пользователей в UI
                                 UpdateUsersList();
-                                
+
                                 // Добавляем сообщение в чат
                                 string messageText = $"[{DateTime.Now:HH:mm:ss}] {displayName}: {m.mes}";
                                 // Захватываем значения переменных локально для использования в замыкании
                                 bool ownMsg = isOwnMessage;
                                 string msgHash = messageHash;
-                                uiContext.Post(d => 
+                                uiContext.Post(d =>
                                 {
                                     if (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested)
                                     {
                                         listBoxMessages.Items.Add(messageText);
                                         listBoxMessages.TopIndex = listBoxMessages.Items.Count - 1;
-                                        
+
                                         // Удаляем собственное сообщение из словаря только после успешного добавления в UI
                                         // Это гарантирует, что сообщение будет показано хотя бы один раз
                                         if (ownMsg && !string.IsNullOrEmpty(msgHash))
@@ -516,13 +497,13 @@ namespace Datagram_sockets
                             {
                                 break;
                             }
-                            
+
                             // SocketException с кодом 10060 (WSAETIMEDOUT) - это нормально, просто продолжаем
                             if (ex.SocketErrorCode != SocketError.TimedOut)
                             {
                                 ShowError($"Network receive error: {ex.Message}");
                             }
-                            
+
                             // Небольшая задержка перед следующей попыткой, но проверяем отмену
                             if (cancellationTokenSource == null || cancellationTokenSource.Token.WaitHandle.WaitOne(1000))
                             {
@@ -553,7 +534,7 @@ namespace Datagram_sockets
                     {
                         isReceiving = false; // Сбрасываем флаг перед повторным вызовом
                         var cts = cancellationTokenSource; // Сохраняем ссылку
-                        Task.Delay(2000).ContinueWith(t => 
+                        Task.Delay(2000).ContinueWith(t =>
                         {
                             if (cts != null && !cts.Token.IsCancellationRequested)
                             {
@@ -570,7 +551,7 @@ namespace Datagram_sockets
                     {
                         isReceiving = false; // Сбрасываем флаг перед повторным вызовом
                         var cts = cancellationTokenSource; // Сохраняем ссылку
-                        Task.Delay(2000).ContinueWith(t => 
+                        Task.Delay(2000).ContinueWith(t =>
                         {
                             if (cts != null && !cts.Token.IsCancellationRequested)
                             {
@@ -585,7 +566,7 @@ namespace Datagram_sockets
                 }
             });
         }
-        
+
         // Обновление списка пользователей
         private void UpdateUsersList()
         {
@@ -602,7 +583,7 @@ namespace Datagram_sockets
                             .OrderBy(x => x)
                             .ToList();
                     }
-                    
+
                     // Обновляем UI только если есть изменения
                     uiContext.Post(d =>
                     {
@@ -610,7 +591,7 @@ namespace Datagram_sockets
                         {
                             if (cancellationTokenSource == null || cancellationTokenSource.Token.IsCancellationRequested)
                                 return;
-                                
+
                             listBoxUsers.Items.Clear();
                             foreach (var user in usersList)
                             {
@@ -630,7 +611,7 @@ namespace Datagram_sockets
                 System.Diagnostics.Debug.WriteLine($"UpdateUsersList error: {ex.Message}");
             }
         }
-        
+
         // Проверка таймаута пользователей
         private async void CheckUsersTimeout()
         {
@@ -655,13 +636,13 @@ namespace Datagram_sockets
                                     UpdateUsersList();
                                 }
                             }
-                            
+
                             // Очищаем старые записи отправленных сообщений (только те, которые старше 120 секунд)
                             // Увеличено до максимума для гарантии, что все сообщения успеют вернуться через multicast
                             // даже при серьезных задержках сети или проблемах с сетью
                             lock (sentMessages)
                             {
-                                var expiredMessages = sentMessages.Where(m => 
+                                var expiredMessages = sentMessages.Where(m =>
                                     (DateTime.Now - m.Value).TotalSeconds > 120
                                 ).ToList();
                                 foreach (var msg in expiredMessages)
@@ -711,7 +692,7 @@ namespace Datagram_sockets
                 Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
                 // TTL = 1 означает только локальную сеть, 2 - локальная сеть + один роутер
                 socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 1);
-                
+
                 // Для Windows: привязываем сокет к локальному интерфейсу перед отправкой
                 if (!string.IsNullOrEmpty(localIP) && localIP != "127.0.0.1")
                 {
@@ -749,7 +730,7 @@ namespace Datagram_sockets
                 ShowError($"Send error: {ex.Message}");
             }
         }
-        
+
         // отправление сообщения
         private async void button1_Click(object sender, EventArgs e)
         {
@@ -759,13 +740,13 @@ namespace Datagram_sockets
                 {
                     return;
                 }
-                
+
                 string messageText = textBoxMessage.Text;
                 textBoxMessage.Clear();
-                
+
                 // Показываем временное сообщение о отправке
                 ShowInfo($"Sending message...");
-                
+
                 // Создаем хеш сообщения для предотвращения дублирования
                 // Используем уникальный идентификатор: nickname + текст + timestamp для большей надежности
                 string messageHash = $"{currentNickname}:{messageText}";
@@ -776,7 +757,7 @@ namespace Datagram_sockets
                     // Сообщение будет удалено только после успешного добавления в UI
                     sentMessages[messageHash] = sendTime;
                 }
-                
+
                 await Task.Run(() =>
                 {
                     try
@@ -798,26 +779,16 @@ namespace Datagram_sockets
                 ShowError($"Button click error: {ex.Message}");
             }
         }
-        
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            try
-            {
-                // Останавливаем таймер
-                timer1.Stop();
-            }
-            catch
-            {
-                // Игнорируем ошибки остановки таймера
-            }
-            
             try
             {
                 // Запрашиваем отмену всех задач
                 if (cancellationTokenSource != null)
                 {
                     cancellationTokenSource.Cancel();
-                    
+
                     // Даем время задачам завершиться
                     Thread.Sleep(100);
                 }
@@ -826,7 +797,7 @@ namespace Datagram_sockets
             {
                 // Игнорируем ошибки отмены
             }
-            
+
             try
             {
                 // Отправляем уведомление об отключении
@@ -859,7 +830,7 @@ namespace Datagram_sockets
                 {
                     System.Diagnostics.Debug.WriteLine($"Socket close error: {ex.Message}");
                 }
-                
+
                 try
                 {
                     // Освобождаем ресурсы CancellationTokenSource после закрытия сокета
@@ -873,11 +844,11 @@ namespace Datagram_sockets
                 {
                     // Игнорируем ошибки освобождения
                 }
-                
+
                 base.OnFormClosing(e);
             }
         }
-        
+
         // Отправка сообщения по Enter
         private void textBoxMessage_KeyDown(object sender, KeyEventArgs e)
         {
@@ -894,7 +865,7 @@ namespace Datagram_sockets
                 ShowError($"KeyDown error: {ex.Message}");
             }
         }
-        
+
         // Отправка уведомления о подключении
         private async void SendJoinNotification()
         {
@@ -911,7 +882,7 @@ namespace Datagram_sockets
                         joinMsg.mes = "";
                         SendMulticastMessage(joinMsg);
                         ShowInfo("Connected to chat");
-                        
+
                         // Отправляем несколько heartbeat сообщений подряд для быстрого обнаружения
                         for (int i = 0; i < 3; i++)
                         {
@@ -934,7 +905,7 @@ namespace Datagram_sockets
                 ShowError($"SendJoinNotification error: {ex.Message}");
             }
         }
-        
+
         // Отправка уведомления об отключении
         private void SendLeaveNotification()
         {
@@ -951,7 +922,7 @@ namespace Datagram_sockets
                 System.Diagnostics.Debug.WriteLine($"SendLeaveNotification error: {ex.Message}");
             }
         }
-        
+
         // Периодическая отправка heartbeat сообщений для обнаружения участников
         private async void StartHeartbeat()
         {
@@ -961,10 +932,10 @@ namespace Datagram_sockets
                 {
                     if (cancellationTokenSource == null)
                         return;
-                        
+
                     // Небольшая задержка перед первым heartbeat
                     await Task.Delay(2000, cancellationTokenSource.Token);
-                    
+
                     while (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested)
                     {
                         try
@@ -979,7 +950,7 @@ namespace Datagram_sockets
                         {
                             ShowError($"Heartbeat send error: {ex.Message}");
                         }
-                        
+
                         try
                         {
                             if (cancellationTokenSource == null)
@@ -1002,36 +973,36 @@ namespace Datagram_sockets
                 }
             });
         }
-        
+
         // Обработчик смены nickname
         private async void buttonChangeNickname_Click(object sender, EventArgs e)
         {
             try
             {
                 string newNickname = textBoxNickname.Text.Trim();
-                
+
                 if (string.IsNullOrWhiteSpace(newNickname))
                 {
                     ShowError("Nickname cannot be empty!");
                     textBoxNickname.Text = currentNickname;
                     return;
                 }
-                
+
                 if (newNickname == currentNickname)
                 {
                     return; // Ничего не изменилось
                 }
-                
+
                 string oldNickname = currentNickname;
                 currentNickname = newNickname;
                 textBoxNickname.Text = currentNickname;
-                
+
                 // Обновляем свой nickname в словаре
                 lock (userNicknames)
                 {
                     userNicknames[localIP] = newNickname;
                 }
-                
+
                 // Отправляем уведомление о смене nickname
                 await Task.Run(() =>
                 {
@@ -1052,7 +1023,7 @@ namespace Datagram_sockets
                         currentNickname = oldNickname;
                         if (uiContext != null)
                         {
-                            uiContext.Post(d => 
+                            uiContext.Post(d =>
                         {
                             if (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested)
                             {
@@ -1067,6 +1038,11 @@ namespace Datagram_sockets
             {
                 ShowError($"ButtonChangeNickname error: {ex.Message}");
             }
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+
         }
     }
 }
