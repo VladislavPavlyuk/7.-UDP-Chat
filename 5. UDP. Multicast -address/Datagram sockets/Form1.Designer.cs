@@ -34,7 +34,6 @@ namespace Datagram_sockets
             textBoxMessage = new System.Windows.Forms.TextBox();
             listBoxUsers = new System.Windows.Forms.ListBox();
             labelUsers = new System.Windows.Forms.Label();
-            labelUserName = new System.Windows.Forms.Label();
             textBoxNickname = new System.Windows.Forms.TextBox();
             buttonChangeNickname = new System.Windows.Forms.Button();
             labelNickname = new System.Windows.Forms.Label();
@@ -90,19 +89,10 @@ namespace Datagram_sockets
             labelUsers.TabIndex = 5;
             labelUsers.Text = "Users:";
             // 
-            // labelUserName
-            // 
-            labelUserName.AutoSize = true;
-            labelUserName.Location = new System.Drawing.Point(12, 20);
-            labelUserName.Name = "labelUserName";
-            labelUserName.Size = new System.Drawing.Size(50, 20);
-            labelUserName.TabIndex = 6;
-            labelUserName.Text = "You: ...";
-            // 
             // labelNickname
             // 
             labelNickname.AutoSize = true;
-            labelNickname.Location = new System.Drawing.Point(220, 20);
+            labelNickname.Location = new System.Drawing.Point(12, 20);
             labelNickname.Name = "labelNickname";
             labelNickname.Size = new System.Drawing.Size(70, 20);
             labelNickname.TabIndex = 7;
@@ -110,7 +100,7 @@ namespace Datagram_sockets
             // 
             // textBoxNickname
             // 
-            textBoxNickname.Location = new System.Drawing.Point(296, 17);
+            textBoxNickname.Location = new System.Drawing.Point(88, 17);
             textBoxNickname.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             textBoxNickname.Name = "textBoxNickname";
             textBoxNickname.Size = new System.Drawing.Size(200, 27);
@@ -135,7 +125,6 @@ namespace Datagram_sockets
             Controls.Add(buttonChangeNickname);
             Controls.Add(textBoxNickname);
             Controls.Add(labelNickname);
-            Controls.Add(labelUserName);
             Controls.Add(labelUsers);
             Controls.Add(listBoxUsers);
             Controls.Add(textBoxMessage);
@@ -159,7 +148,6 @@ namespace Datagram_sockets
         private System.Windows.Forms.TextBox textBoxMessage;
         private System.Windows.Forms.ListBox listBoxUsers;
         private System.Windows.Forms.Label labelUsers;
-        private System.Windows.Forms.Label labelUserName;
         private System.Windows.Forms.TextBox textBoxNickname;
         private System.Windows.Forms.Button buttonChangeNickname;
         private System.Windows.Forms.Label labelNickname;

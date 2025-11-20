@@ -56,7 +56,6 @@ namespace Datagram_sockets
             uiContext = SynchronizationContext.Current;
             currentUserName = Environment.UserDomainName + @"\" + Environment.UserName;
             currentNickname = currentUserName; // по умолчанию nickname = системное имя
-            labelUserName.Text = "You: " + currentNickname;
             textBoxNickname.Text = currentNickname;
             
             // Определяем локальный IP адрес
@@ -325,7 +324,7 @@ namespace Datagram_sockets
             
             string oldNickname = currentNickname;
             currentNickname = newNickname;
-            labelUserName.Text = "You: " + currentNickname;
+            textBoxNickname.Text = currentNickname;
             
             // Обновляем свой nickname в словаре
             lock (userNicknames)
@@ -364,7 +363,6 @@ namespace Datagram_sockets
                     MessageBox.Show("Error changing nickname: " + ex.Message);
                     // Откатываем изменения при ошибке
                     currentNickname = oldNickname;
-                    labelUserName.Text = "You: " + currentNickname;
                     textBoxNickname.Text = currentNickname;
                 }
             });
