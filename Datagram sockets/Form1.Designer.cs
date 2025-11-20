@@ -29,6 +29,7 @@ namespace Datagram_sockets
         /// </summary>
         private void InitializeComponent()
         {
+            components = new System.ComponentModel.Container();
             button1 = new System.Windows.Forms.Button();
             listBoxMessages = new System.Windows.Forms.ListBox();
             textBoxMessage = new System.Windows.Forms.TextBox();
@@ -38,6 +39,8 @@ namespace Datagram_sockets
             buttonChangeNickname = new System.Windows.Forms.Button();
             labelNickname = new System.Windows.Forms.Label();
             labelStatus = new System.Windows.Forms.Label();
+            labelTimer = new System.Windows.Forms.Label();
+            timer1 = new System.Windows.Forms.Timer(components);
             SuspendLayout();
             // 
             // button1
@@ -71,14 +74,6 @@ namespace Datagram_sockets
             textBoxMessage.TabIndex = 3;
             textBoxMessage.KeyDown += textBoxMessage_KeyDown;
             // 
-            // labelStatus
-            // 
-            labelStatus.AutoSize = true;
-            labelStatus.Location = new System.Drawing.Point(12, 395);
-            labelStatus.Name = "labelStatus";
-            labelStatus.Size = new System.Drawing.Size(0, 20);
-            labelStatus.TabIndex = 10;
-            // 
             // listBoxUsers
             // 
             listBoxUsers.FormattingEnabled = true;
@@ -94,18 +89,9 @@ namespace Datagram_sockets
             labelUsers.AutoSize = true;
             labelUsers.Location = new System.Drawing.Point(620, 20);
             labelUsers.Name = "labelUsers";
-            labelUsers.Size = new System.Drawing.Size(120, 20);
+            labelUsers.Size = new System.Drawing.Size(47, 20);
             labelUsers.TabIndex = 5;
             labelUsers.Text = "Users:";
-            // 
-            // labelNickname
-            // 
-            labelNickname.AutoSize = true;
-            labelNickname.Location = new System.Drawing.Point(12, 20);
-            labelNickname.Name = "labelNickname";
-            labelNickname.Size = new System.Drawing.Size(70, 20);
-            labelNickname.TabIndex = 7;
-            labelNickname.Text = "Nickname:";
             // 
             // textBoxNickname
             // 
@@ -117,7 +103,7 @@ namespace Datagram_sockets
             // 
             // buttonChangeNickname
             // 
-            buttonChangeNickname.Location = new System.Drawing.Point(504, 15);
+            buttonChangeNickname.Location = new System.Drawing.Point(296, 15);
             buttonChangeNickname.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             buttonChangeNickname.Name = "buttonChangeNickname";
             buttonChangeNickname.Size = new System.Drawing.Size(108, 30);
@@ -126,11 +112,44 @@ namespace Datagram_sockets
             buttonChangeNickname.UseVisualStyleBackColor = true;
             buttonChangeNickname.Click += buttonChangeNickname_Click;
             // 
+            // labelNickname
+            // 
+            labelNickname.AutoSize = true;
+            labelNickname.Location = new System.Drawing.Point(12, 20);
+            labelNickname.Name = "labelNickname";
+            labelNickname.Size = new System.Drawing.Size(78, 20);
+            labelNickname.TabIndex = 7;
+            labelNickname.Text = "Nickname:";
+            // 
+            // labelStatus
+            // 
+            labelStatus.AutoSize = true;
+            labelStatus.Location = new System.Drawing.Point(12, 395);
+            labelStatus.Name = "labelStatus";
+            labelStatus.Size = new System.Drawing.Size(0, 20);
+            labelStatus.TabIndex = 10;
+            // 
+            // labelTimer
+            // 
+            labelTimer.AutoSize = true;
+            labelTimer.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point);
+            labelTimer.Location = new System.Drawing.Point(420, 20);
+            labelTimer.Name = "labelTimer";
+            labelTimer.Size = new System.Drawing.Size(94, 28);
+            labelTimer.TabIndex = 11;
+            labelTimer.Text = "00:00:00";
+            // 
+            // timer1
+            // 
+            timer1.Interval = 1000;
+            timer1.Tick += timer1_Tick;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new System.Drawing.SizeF(8F, 20F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             ClientSize = new System.Drawing.Size(832, 500);
+            Controls.Add(labelTimer);
             Controls.Add(labelStatus);
             Controls.Add(buttonChangeNickname);
             Controls.Add(textBoxNickname);
@@ -141,7 +160,6 @@ namespace Datagram_sockets
             Controls.Add(listBoxMessages);
             Controls.Add(button1);
             FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
-            Icon = new System.Drawing.Icon("app.ico");
             Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             MaximizeBox = false;
             Name = "Form1";
@@ -162,6 +180,8 @@ namespace Datagram_sockets
         private System.Windows.Forms.Button buttonChangeNickname;
         private System.Windows.Forms.Label labelNickname;
         private System.Windows.Forms.Label labelStatus;
+        private System.Windows.Forms.Label labelTimer;
+        private System.Windows.Forms.Timer timer1;
     }
 }
 
