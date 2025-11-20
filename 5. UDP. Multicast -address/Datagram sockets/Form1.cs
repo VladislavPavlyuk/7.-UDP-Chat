@@ -20,7 +20,7 @@ namespace Datagram_sockets
             public string mes; // текст сообщения
             public string user; // имя пользователя
             public string oldNickname; // старый nickname (для уведомления о смене)
-            public string messageType; // тип сообщения: "chat" или "nickname_change"
+            public string messageType; // тип сообщения: "chat", "nickname_change", "join", "leave"
             public Message()
             {
                 messageType = "chat"; // по умолчанию обычное сообщение
@@ -83,6 +83,9 @@ namespace Datagram_sockets
             
             WaitClientQuery();
             CheckUsersTimeout();
+            
+            // Отправляем уведомление о подключении
+            SendJoinNotification();
         }
         // Multicast — это такая технология сетевой адресации, при которой сообщение доставляются сразу группе получателей
 
@@ -155,7 +158,7 @@ namespace Datagram_sockets
                             }
                         }
                         
-                        // Обработка уведомления о смене nickname
+                        // Обработка различных типов сообщений
                         if (m.messageType == "nickname_change")
                         {
                             string oldDisplayName = displayName;
@@ -184,6 +187,67 @@ namespace Datagram_sockets
                                 // Добавляем новую запись с новым nickname
                                 string userKey = m.user + " (" + clientIP + ")";
                                 users[userKey] = DateTime.Now;
+                            }
+                            
+                            UpdateUsersList();
+                        }
+                        else if (m.messageType == "join")
+                        {
+                            // Уведомление о подключении (пропускаем собственные уведомления)
+                            if (clientIP == localIP)
+                            {
+                                continue;
+                            }
+                            
+                            lock (userNicknames)
+                            {
+                                userNicknames[clientIP] = m.user;
+                            }
+                            
+                            string notificationText = $"[{DateTime.Now:HH:mm:ss}] *** {m.user} joined the chat ***";
+                            uiContext.Send(d => 
+                            {
+                                listBoxMessages.Items.Add(notificationText);
+                                listBoxMessages.TopIndex = listBoxMessages.Items.Count - 1;
+                            }, null);
+                            
+                            // Добавляем пользователя в список
+                            string userKey = m.user + " (" + clientIP + ")";
+                            lock (users)
+                            {
+                                users[userKey] = DateTime.Now;
+                            }
+                            
+                            UpdateUsersList();
+                        }
+                        else if (m.messageType == "leave")
+                        {
+                            // Уведомление об отключении (пропускаем собственные уведомления)
+                            if (clientIP == localIP)
+                            {
+                                continue;
+                            }
+                            
+                            string notificationText = $"[{DateTime.Now:HH:mm:ss}] *** {displayName} left the chat ***";
+                            uiContext.Send(d => 
+                            {
+                                listBoxMessages.Items.Add(notificationText);
+                                listBoxMessages.TopIndex = listBoxMessages.Items.Count - 1;
+                            }, null);
+                            
+                            // Удаляем пользователя из списка
+                            lock (users)
+                            {
+                                var userKey = users.Keys.FirstOrDefault(k => k.Contains(clientIP));
+                                if (userKey != null)
+                                {
+                                    users.Remove(userKey);
+                                }
+                            }
+                            
+                            lock (userNicknames)
+                            {
+                                userNicknames.Remove(clientIP);
                             }
                             
                             UpdateUsersList();
@@ -325,6 +389,8 @@ namespace Datagram_sockets
         
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            // Отправляем уведомление об отключении
+            SendLeaveNotification();
             receiveSocket?.Close();
             base.OnFormClosing(e);
         }
@@ -336,6 +402,71 @@ namespace Datagram_sockets
             {
                 e.SuppressKeyPress = true;
                 button1_Click(sender, e);
+            }
+        }
+        
+        // Отправка уведомления о подключении
+        private async void SendJoinNotification()
+        {
+            await Task.Run(() =>
+            {
+                try
+                {
+                    IPAddress ip = IPAddress.Parse("235.0.0.0");
+                    IPEndPoint ipEndPoint = new IPEndPoint(ip, 49152);
+
+                    Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 2);
+                    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ip));
+
+                    MemoryStream stream = new MemoryStream();
+                    XmlSerializer serializer = new XmlSerializer(typeof(Message));
+                    Message m = new Message();
+                    m.user = currentNickname;
+                    m.messageType = "join";
+                    m.mes = ""; // пустое сообщение для уведомления
+                    serializer.Serialize(stream, m);
+                    byte[] arr = stream.ToArray();
+                    stream.Close();
+                    socket.SendTo(arr, ipEndPoint);
+                    socket.Shutdown(SocketShutdown.Send);
+                    socket.Close();
+                }
+                catch (Exception ex)
+                {
+                    // Игнорируем ошибки при отправке уведомления о подключении
+                }
+            });
+        }
+        
+        // Отправка уведомления об отключении
+        private void SendLeaveNotification()
+        {
+            try
+            {
+                IPAddress ip = IPAddress.Parse("235.0.0.0");
+                IPEndPoint ipEndPoint = new IPEndPoint(ip, 49152);
+
+                Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 2);
+                socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ip));
+
+                MemoryStream stream = new MemoryStream();
+                XmlSerializer serializer = new XmlSerializer(typeof(Message));
+                Message m = new Message();
+                m.user = currentNickname;
+                m.messageType = "leave";
+                m.mes = ""; // пустое сообщение для уведомления
+                serializer.Serialize(stream, m);
+                byte[] arr = stream.ToArray();
+                stream.Close();
+                socket.SendTo(arr, ipEndPoint);
+                socket.Shutdown(SocketShutdown.Send);
+                socket.Close();
+            }
+            catch
+            {
+                // Игнорируем ошибки при отправке уведомления об отключении
             }
         }
         
