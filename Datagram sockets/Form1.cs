@@ -432,7 +432,7 @@ namespace Datagram_sockets
                     socket.Shutdown(SocketShutdown.Send);
                     socket.Close();
                 }
-                catch (Exception ex)
+                catch
                 {
                     // Игнорируем ошибки при отправке уведомления о подключении
                 }
