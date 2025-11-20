@@ -41,10 +41,10 @@ namespace Datagram_sockets
             // 
             // button1
             // 
-            button1.Location = new System.Drawing.Point(12, 380);
+            button1.Location = new System.Drawing.Point(620, 425);
             button1.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             button1.Name = "button1";
-            button1.Size = new System.Drawing.Size(200, 35);
+            button1.Size = new System.Drawing.Size(200, 60);
             button1.TabIndex = 0;
             button1.Text = "Send Message";
             button1.UseVisualStyleBackColor = true;
