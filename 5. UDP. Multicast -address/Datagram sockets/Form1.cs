@@ -19,16 +19,21 @@ namespace Datagram_sockets
         {
             public string mes; // текст сообщения
             public string user; // имя пользователя
+            public string oldNickname; // старый nickname (для уведомления о смене)
+            public string messageType; // тип сообщения: "chat" или "nickname_change"
             public Message()
             {
-
+                messageType = "chat"; // по умолчанию обычное сообщение
             }
         }
         
         public SynchronizationContext uiContext;
         private Socket receiveSocket;
         private string currentUserName;
-        private Dictionary<string, DateTime> users = new Dictionary<string, DateTime>();
+        private string currentNickname;
+        private string localIP;
+        private Dictionary<string, DateTime> users = new Dictionary<string, DateTime>(); // nickname (IP) -> DateTime
+        private Dictionary<string, string> userNicknames = new Dictionary<string, string>(); // IP -> nickname
         private const int USER_TIMEOUT_SECONDS = 30;
 
         public Form1()
@@ -50,7 +55,31 @@ namespace Datagram_sockets
             // Получим контекст синхронизации для текущего потока 
             uiContext = SynchronizationContext.Current;
             currentUserName = Environment.UserDomainName + @"\" + Environment.UserName;
-            labelUserName.Text = "You: " + currentUserName;
+            currentNickname = currentUserName; // по умолчанию nickname = системное имя
+            labelUserName.Text = "You: " + currentNickname;
+            textBoxNickname.Text = currentNickname;
+            
+            // Определяем локальный IP адрес
+            try
+            {
+                using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
+                {
+                    socket.Connect("8.8.8.8", 65530);
+                    IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
+                    localIP = endPoint.Address.ToString();
+                }
+            }
+            catch
+            {
+                localIP = "127.0.0.1"; // fallback
+            }
+            
+            // Инициализируем свой nickname в словаре
+            lock (userNicknames)
+            {
+                userNicknames[localIP] = currentNickname;
+            }
+            
             WaitClientQuery();
             CheckUsersTimeout();
         }
@@ -86,20 +115,75 @@ namespace Datagram_sockets
                         Message m = serializer.Deserialize(stream) as Message;
                         stream.Close();
                         
-                        // Обновляем список пользователей
-                        string userKey = m.user + " (" + clientIP + ")";
-                        lock (users)
+                        // Пропускаем собственные сообщения (определяем по IP)
+                        if (clientIP == localIP)
                         {
-                            users[userKey] = DateTime.Now;
+                            continue;
                         }
                         
-                        // Обновляем список пользователей в UI
-                        UpdateUsersList();
-                        
-                        // Добавляем сообщение в чат (не показываем собственные сообщения, они уже добавлены)
-                        if (m.user != currentUserName)
+                        // Определяем отображаемое имя пользователя
+                        string displayName = m.user;
+                        lock (userNicknames)
                         {
-                            string messageText = $"[{DateTime.Now:HH:mm:ss}] {m.user}: {m.mes}";
+                            if (userNicknames.ContainsKey(clientIP))
+                            {
+                                displayName = userNicknames[clientIP];
+                            }
+                            else
+                            {
+                                userNicknames[clientIP] = m.user;
+                                displayName = m.user;
+                            }
+                        }
+                        
+                        // Обработка уведомления о смене nickname
+                        if (m.messageType == "nickname_change")
+                        {
+                            string oldDisplayName = displayName;
+                            lock (userNicknames)
+                            {
+                                userNicknames[clientIP] = m.user; // новый nickname
+                                displayName = m.user;
+                            }
+                            
+                            string notificationText = $"[{DateTime.Now:HH:mm:ss}] *** {oldDisplayName} changed nickname to {m.user} ***";
+                            uiContext.Send(d => 
+                            {
+                                listBoxMessages.Items.Add(notificationText);
+                                listBoxMessages.TopIndex = listBoxMessages.Items.Count - 1;
+                            }, null);
+                            
+                            // Обновляем список пользователей
+                            lock (users)
+                            {
+                                // Удаляем старую запись по IP
+                                var oldKey = users.Keys.FirstOrDefault(k => k.Contains(clientIP));
+                                if (oldKey != null)
+                                {
+                                    users.Remove(oldKey);
+                                }
+                                // Добавляем новую запись с новым nickname
+                                string userKey = m.user + " (" + clientIP + ")";
+                                users[userKey] = DateTime.Now;
+                            }
+                            
+                            UpdateUsersList();
+                        }
+                        else
+                        {
+                            // Обычное сообщение
+                            // Обновляем список пользователей
+                            string userKey = displayName + " (" + clientIP + ")";
+                            lock (users)
+                            {
+                                users[userKey] = DateTime.Now;
+                            }
+                            
+                            // Обновляем список пользователей в UI
+                            UpdateUsersList();
+                            
+                            // Добавляем сообщение в чат
+                            string messageText = $"[{DateTime.Now:HH:mm:ss}] {displayName}: {m.mes}";
                             uiContext.Send(d => 
                             {
                                 listBoxMessages.Items.Add(messageText);
@@ -125,7 +209,8 @@ namespace Datagram_sockets
                 {
                     foreach (var user in users.Keys.OrderBy(x => x))
                     {
-                        if (!user.Contains(currentUserName))
+                        // Пропускаем собственные записи (определяем по IP)
+                        if (!user.Contains(localIP))
                         {
                             listBoxUsers.Items.Add(user);
                         }
@@ -189,7 +274,8 @@ namespace Datagram_sockets
                     XmlSerializer serializer = new XmlSerializer(typeof(Message));
                     Message m = new Message();
                     m.mes = messageText;
-                    m.user = currentUserName;
+                    m.user = currentNickname;
+                    m.messageType = "chat";
                     serializer.Serialize(stream, m);
                     byte[] arr = stream.ToArray();
                     stream.Close();
@@ -218,6 +304,70 @@ namespace Datagram_sockets
                 e.SuppressKeyPress = true;
                 button1_Click(sender, e);
             }
+        }
+        
+        // Обработчик смены nickname
+        private async void buttonChangeNickname_Click(object sender, EventArgs e)
+        {
+            string newNickname = textBoxNickname.Text.Trim();
+            
+            if (string.IsNullOrWhiteSpace(newNickname))
+            {
+                MessageBox.Show("Nickname cannot be empty!");
+                textBoxNickname.Text = currentNickname;
+                return;
+            }
+            
+            if (newNickname == currentNickname)
+            {
+                return; // Ничего не изменилось
+            }
+            
+            string oldNickname = currentNickname;
+            currentNickname = newNickname;
+            labelUserName.Text = "You: " + currentNickname;
+            
+            // Обновляем свой nickname в словаре
+            lock (userNicknames)
+            {
+                userNicknames[localIP] = newNickname;
+            }
+            
+            // Отправляем уведомление о смене nickname
+            await Task.Run(() =>
+            {
+                try
+                {
+                    IPAddress ip = IPAddress.Parse("235.0.0.0");
+                    IPEndPoint ipEndPoint = new IPEndPoint(ip, 49152);
+
+                    Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 2);
+                    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ip));
+
+                    MemoryStream stream = new MemoryStream();
+                    XmlSerializer serializer = new XmlSerializer(typeof(Message));
+                    Message m = new Message();
+                    m.user = newNickname;
+                    m.oldNickname = oldNickname;
+                    m.messageType = "nickname_change";
+                    m.mes = ""; // пустое сообщение для уведомления
+                    serializer.Serialize(stream, m);
+                    byte[] arr = stream.ToArray();
+                    stream.Close();
+                    socket.SendTo(arr, ipEndPoint);
+                    socket.Shutdown(SocketShutdown.Send);
+                    socket.Close();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Error changing nickname: " + ex.Message);
+                    // Откатываем изменения при ошибке
+                    currentNickname = oldNickname;
+                    labelUserName.Text = "You: " + currentNickname;
+                    textBoxNickname.Text = currentNickname;
+                }
+            });
         }
     }
 }

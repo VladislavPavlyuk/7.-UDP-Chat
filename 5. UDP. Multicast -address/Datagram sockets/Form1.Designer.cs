@@ -35,6 +35,9 @@ namespace Datagram_sockets
             listBoxUsers = new System.Windows.Forms.ListBox();
             labelUsers = new System.Windows.Forms.Label();
             labelUserName = new System.Windows.Forms.Label();
+            textBoxNickname = new System.Windows.Forms.TextBox();
+            buttonChangeNickname = new System.Windows.Forms.Button();
+            labelNickname = new System.Windows.Forms.Label();
             SuspendLayout();
             // 
             // button1
@@ -96,11 +99,42 @@ namespace Datagram_sockets
             labelUserName.TabIndex = 6;
             labelUserName.Text = "You: ...";
             // 
+            // labelNickname
+            // 
+            labelNickname.AutoSize = true;
+            labelNickname.Location = new System.Drawing.Point(220, 20);
+            labelNickname.Name = "labelNickname";
+            labelNickname.Size = new System.Drawing.Size(70, 20);
+            labelNickname.TabIndex = 7;
+            labelNickname.Text = "Nickname:";
+            // 
+            // textBoxNickname
+            // 
+            textBoxNickname.Location = new System.Drawing.Point(296, 17);
+            textBoxNickname.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            textBoxNickname.Name = "textBoxNickname";
+            textBoxNickname.Size = new System.Drawing.Size(200, 27);
+            textBoxNickname.TabIndex = 8;
+            // 
+            // buttonChangeNickname
+            // 
+            buttonChangeNickname.Location = new System.Drawing.Point(504, 15);
+            buttonChangeNickname.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            buttonChangeNickname.Name = "buttonChangeNickname";
+            buttonChangeNickname.Size = new System.Drawing.Size(108, 30);
+            buttonChangeNickname.TabIndex = 9;
+            buttonChangeNickname.Text = "Change";
+            buttonChangeNickname.UseVisualStyleBackColor = true;
+            buttonChangeNickname.Click += buttonChangeNickname_Click;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new System.Drawing.SizeF(8F, 20F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             ClientSize = new System.Drawing.Size(832, 500);
+            Controls.Add(buttonChangeNickname);
+            Controls.Add(textBoxNickname);
+            Controls.Add(labelNickname);
             Controls.Add(labelUserName);
             Controls.Add(labelUsers);
             Controls.Add(listBoxUsers);
@@ -126,6 +160,9 @@ namespace Datagram_sockets
         private System.Windows.Forms.ListBox listBoxUsers;
         private System.Windows.Forms.Label labelUsers;
         private System.Windows.Forms.Label labelUserName;
+        private System.Windows.Forms.TextBox textBoxNickname;
+        private System.Windows.Forms.Button buttonChangeNickname;
+        private System.Windows.Forms.Label labelNickname;
     }
 }
 
