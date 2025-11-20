@@ -6,6 +6,8 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Serialization;
+using System.Collections.Generic;
+using System.Linq;
 
 
 namespace Datagram_sockets
@@ -22,14 +24,22 @@ namespace Datagram_sockets
 
             }
         }
+        
         public SynchronizationContext uiContext;
+        private Socket receiveSocket;
+        private string currentUserName;
+        private Dictionary<string, DateTime> users = new Dictionary<string, DateTime>();
+        private const int USER_TIMEOUT_SECONDS = 30;
 
         public Form1()
         {
             InitializeComponent();
             // Получим контекст синхронизации для текущего потока 
             uiContext = SynchronizationContext.Current;
+            currentUserName = Environment.UserDomainName + @"\" + Environment.UserName;
+            labelUserName.Text = "You: " + currentUserName;
             WaitClientQuery();
+            CheckUsersTimeout();
         }
         // Multicast — это такая технология сетевой адресации, при которой сообщение доставляются сразу группе получателей
 
@@ -41,46 +51,96 @@ namespace Datagram_sockets
                 try
                 {
                     // установим для сокета адрес локальной конечной точки
-                    IPEndPoint ipEndPoint = new IPEndPoint(IPAddress.Any /* Предоставляет IP-адрес, указывающий, что сервер должен контролировать действия клиентов на всех сетевых интерфейсах.*/,
+                    IPEndPoint ipEndPoint = new IPEndPoint(IPAddress.Any,
                         49152 /* порт */);
 
                     // создаем дейтаграммный сокет
-                    Socket socket = new Socket(AddressFamily.InterNetwork /*схема адресации*/, SocketType.Dgram /*тип сокета*/, ProtocolType.Udp /*протокол*/ );
-                    /* Значение InterNetwork указывает на то, что при подключении объекта Socket к конечной точке предполагается использование IPv4-адреса.
-                       Поддерживает датаграммы — ненадежные сообщения с фиксированной (обычно малой) максимальной длиной, передаваемые без установления подключения. 
-                     * Возможны потеря и дублирование сообщений, а также их получение не в том порядке, в котором они отправлены. 
-                     * Объект Socket типа Dgram не требует установки подключения до приема и передачи данных и может обеспечивать связь со множеством одноранговых узлов.
-                     * Dgram использует протокол Datagram (Udp) и InterNetwork.
-                     */
+                    receiveSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
                     IPAddress ip = IPAddress.Parse("235.0.0.0");
                     // Регистрируем multicast-адрес 235.0.0.0
-                    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ip));
-                    socket.Bind(ipEndPoint); // Свяжем объект Socket с локальной конечной точкой.  
+                    receiveSocket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ip));
+                    receiveSocket.Bind(ipEndPoint);
                     
-                    // Как только отправитель посылает дейтаграмму на некоторый multicast-адрес,
-                    // роутер немедленно перенаправляет её всем получателям, которые зарегистрировались
-                    // на получение информации с этого multicast-адреса
                     while (true)
                     {
-                        EndPoint remote = new IPEndPoint(0x7F000000, 100); // информация об удаленном хосте, который отправил датаграмму
+                        EndPoint remote = new IPEndPoint(0x7F000000, 100);
                         byte[] arr = new byte[1024];
-                        int len = socket.ReceiveFrom(arr, ref remote); // получим UDP-датаграмму
-                        string clientIP = ((IPEndPoint)remote).Address.ToString(); // получим IP-адрес удаленного 
-                        // Создадим поток, резервным хранилищем которого является память.
+                        int len = receiveSocket.ReceiveFrom(arr, ref remote);
+                        string clientIP = ((IPEndPoint)remote).Address.ToString();
+                        
                         MemoryStream stream = new MemoryStream(arr, 0, len);
-                        // XmlSerializer сериализует и десериализует объект в XML-формате 
                         XmlSerializer serializer = new XmlSerializer(typeof(Message));
-                        Message m = serializer.Deserialize(stream) as Message; // выполняем десериализацию
-                        // полученную от удаленного узла информацию добавляем в список
-                        uiContext.Send(d => listBox1.Items.Add(clientIP), null);
-                        uiContext.Send(d => listBox1.Items.Add(m.user), null);
-                        uiContext.Send(d => listBox1.Items.Add(m.mes), null);
+                        Message m = serializer.Deserialize(stream) as Message;
                         stream.Close();
+                        
+                        // Обновляем список пользователей
+                        string userKey = m.user + " (" + clientIP + ")";
+                        lock (users)
+                        {
+                            users[userKey] = DateTime.Now;
+                        }
+                        
+                        // Обновляем список пользователей в UI
+                        UpdateUsersList();
+                        
+                        // Добавляем сообщение в чат (не показываем собственные сообщения, они уже добавлены)
+                        if (m.user != currentUserName)
+                        {
+                            string messageText = $"[{DateTime.Now:HH:mm:ss}] {m.user}: {m.mes}";
+                            uiContext.Send(d => 
+                            {
+                                listBoxMessages.Items.Add(messageText);
+                                listBoxMessages.TopIndex = listBoxMessages.Items.Count - 1;
+                            }, null);
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Получатель: " + ex.Message);
+                    MessageBox.Show("Receive error: " + ex.Message);
+                }
+            });
+        }
+        
+        // Обновление списка пользователей
+        private void UpdateUsersList()
+        {
+            uiContext.Send(d =>
+            {
+                listBoxUsers.Items.Clear();
+                lock (users)
+                {
+                    foreach (var user in users.Keys.OrderBy(x => x))
+                    {
+                        if (!user.Contains(currentUserName))
+                        {
+                            listBoxUsers.Items.Add(user);
+                        }
+                    }
+                }
+            }, null);
+        }
+        
+        // Проверка таймаута пользователей
+        private async void CheckUsersTimeout()
+        {
+            await Task.Run(async () =>
+            {
+                while (true)
+                {
+                    await Task.Delay(5000); // Проверяем каждые 5 секунд
+                    lock (users)
+                    {
+                        var expiredUsers = users.Where(u => (DateTime.Now - u.Value).TotalSeconds > USER_TIMEOUT_SECONDS).ToList();
+                        foreach (var user in expiredUsers)
+                        {
+                            users.Remove(user.Key);
+                        }
+                        if (expiredUsers.Count > 0)
+                        {
+                            UpdateUsersList();
+                        }
+                    }
                 }
             });
         }
@@ -88,54 +148,63 @@ namespace Datagram_sockets
         // отправление сообщения
         private async void button1_Click(object sender, EventArgs e)
         {
+            if (string.IsNullOrWhiteSpace(textBoxMessage.Text))
+            {
+                return;
+            }
+            
+            string messageText = textBoxMessage.Text;
+            textBoxMessage.Clear();
+            
+            // Добавляем собственное сообщение в чат сразу
+            string ownMessage = $"[{DateTime.Now:HH:mm:ss}] You: {messageText}";
+            listBoxMessages.Items.Add(ownMessage);
+            listBoxMessages.TopIndex = listBoxMessages.Items.Count - 1;
+            
             await Task.Run(() =>
             {
                 try
                 {
-                    // Согласно стандарта RFC 3171, адреса в диапазоне от 224.0.0.0 до 239.255.255.255
-                    // используются протоколом IPv4 как multicast-адреса
-                    // Как только отправитель посылает дейтаграмму на некоторый multicast-адрес,
-                    // роутер немедленно перенаправляет её всем получателям, которые зарегистрировались
-                    // на получение информации с этого multicast-адреса
                     IPAddress ip = IPAddress.Parse("235.0.0.0");
                     IPEndPoint ipEndPoint = new IPEndPoint(ip, 49152);
 
-                    // создаем дейтаграммный сокет
-                    Socket socket = new Socket(AddressFamily.InterNetwork /*схема адресации*/, SocketType.Dgram /*тип сокета*/, ProtocolType.Udp /*протокол*/ );
-                    /* Значение InterNetwork указывает на то, что при подключении объекта Socket к конечной точке предполагается использование IPv4-адреса.
-                       Поддерживает датаграммы — ненадежные сообщения с фиксированной (обычно малой) максимальной длиной, передаваемые без установления подключения. 
-                     * Возможны потеря и дублирование сообщений, а также их получение не в том порядке, в котором они отправлены. 
-                     * Объект Socket типа Dgram не требует установки подключения до приема и передачи данных и может обеспечивать связь со множеством одноранговых узлов.
-                     * Dgram использует протокол Datagram (Udp) и InterNetwork.
-                     */
-
-                    /* Необходимо установить опцию MulticastTimeTolive, которая влияет на время жизни пакета. 
-                     * Если установить её в значение 1, то пакет не выйдет за пределы локальной сети. 
-                     * Если же установить её в значение отличное от 1, то дейтаграмма будет проходить через несколько роутеров.
-                    */
+                    Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
                     socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 2);
-                    //  Регистрируем multicast-адрес 235.0.0.0
                     socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ip));
 
-                    // Создадим поток, резервным хранилищем которого является память.
                     MemoryStream stream = new MemoryStream();
-                    // XmlSerializer сериализует и десериализует объект в XML-формате 
                     XmlSerializer serializer = new XmlSerializer(typeof(Message));
                     Message m = new Message();
-                    m.mes = textBox2.Text; // текст сообщения
-                    m.user = Environment.UserDomainName + @"\" + Environment.UserName; // имя пользователя
-                    serializer.Serialize(stream, m); // выполняем сериализацию
-                    byte[] arr = stream.ToArray(); // записываем содержимое потока в байтовый массив
+                    m.mes = messageText;
+                    m.user = currentUserName;
+                    serializer.Serialize(stream, m);
+                    byte[] arr = stream.ToArray();
                     stream.Close();
-                    socket.SendTo(arr, ipEndPoint); // передаем UDP-датаграмму на удаленный узел
-                    socket.Shutdown(SocketShutdown.Send); // Отключаем объект Socket от передачи.
-                    socket.Close(); // закрываем UDP-подключение и освобождаем все ресурсы
+                    socket.SendTo(arr, ipEndPoint);
+                    socket.Shutdown(SocketShutdown.Send);
+                    socket.Close();
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Отправитель: " + ex.Message);
+                    MessageBox.Show("Send error: " + ex.Message);
                 }
             });
+        }
+        
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            receiveSocket?.Close();
+            base.OnFormClosing(e);
+        }
+        
+        // Отправка сообщения по Enter
+        private void textBoxMessage_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter && !e.Shift)
+            {
+                e.SuppressKeyPress = true;
+                button1_Click(sender, e);
+            }
         }
     }
 }
