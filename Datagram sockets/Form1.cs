@@ -20,7 +20,7 @@ namespace Datagram_sockets
             public string mes; // текст сообщения
             public string user; // имя пользователя
             public string oldNickname; // старый nickname (для уведомления о смене)
-            public string messageType; // тип сообщения: "chat", "nickname_change", "join", "leave"
+            public string messageType; // тип сообщения: "chat", "nickname_change", "join", "leave", "heartbeat", "heartbeat"
             public Message()
             {
                 messageType = "chat"; // по умолчанию обычное сообщение
@@ -60,14 +60,29 @@ namespace Datagram_sockets
             currentNickname = currentUserName; // по умолчанию nickname = системное имя
             textBoxNickname.Text = currentNickname;
             
-            // Определяем локальный IP адрес
+            // Определяем локальный IP адрес для multicast
             try
             {
-                using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
+                // Пробуем получить первый не-loopback IPv4 адрес
+                var host = Dns.GetHostEntry(Dns.GetHostName());
+                foreach (var ip in host.AddressList)
                 {
-                    socket.Connect("8.8.8.8", 65530);
-                    IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
-                    localIP = endPoint.Address.ToString();
+                    if (ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip))
+                    {
+                        localIP = ip.ToString();
+                        break;
+                    }
+                }
+                
+                // Если не нашли, пробуем через подключение
+                if (string.IsNullOrEmpty(localIP) || localIP == "127.0.0.1")
+                {
+                    using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
+                    {
+                        socket.Connect("8.8.8.8", 65530);
+                        IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
+                        localIP = endPoint.Address.ToString();
+                    }
                 }
             }
             catch
@@ -83,9 +98,10 @@ namespace Datagram_sockets
             
             WaitClientQuery();
             CheckUsersTimeout();
+            StartHeartbeat();
             
-            // Отправляем уведомление о подключении
-            SendJoinNotification();
+            // Отправляем уведомление о подключении с задержкой, чтобы сокет успел инициализироваться
+            Task.Delay(1500).ContinueWith(t => SendJoinNotification());
         }
         // Multicast — это такая технология сетевой адресации, при которой сообщение доставляются сразу группе получателей
 
@@ -252,6 +268,28 @@ namespace Datagram_sockets
                             
                             UpdateUsersList();
                         }
+                        else if (m.messageType == "heartbeat")
+                        {
+                            // Heartbeat сообщение - обновляем информацию о пользователе без уведомления
+                            if (clientIP == localIP)
+                            {
+                                continue; // Пропускаем собственные heartbeat
+                            }
+                            
+                            lock (userNicknames)
+                            {
+                                userNicknames[clientIP] = m.user;
+                            }
+                            
+                            // Обновляем время последней активности пользователя
+                            string userKey = m.user + " (" + clientIP + ")";
+                            lock (users)
+                            {
+                                users[userKey] = DateTime.Now;
+                            }
+                            
+                            UpdateUsersList();
+                        }
                         else
                         {
                             // Обычное сообщение
@@ -338,6 +376,53 @@ namespace Datagram_sockets
             });
         }
 
+        // Вспомогательный метод для отправки multicast сообщения
+        private void SendMulticastMessage(Message message)
+        {
+            try
+            {
+                IPAddress multicastIP = IPAddress.Parse("235.0.0.0");
+                IPEndPoint ipEndPoint = new IPEndPoint(multicastIP, 49152);
+
+                Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                // TTL = 1 означает только локальную сеть, 2 - локальная сеть + один роутер
+                socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 1);
+                
+                // Для Windows: привязываем сокет к локальному интерфейсу перед отправкой
+                if (!string.IsNullOrEmpty(localIP) && localIP != "127.0.0.1")
+                {
+                    try
+                    {
+                        IPAddress localIPAddr = IPAddress.Parse(localIP);
+                        socket.Bind(new IPEndPoint(localIPAddr, 0)); // Порт 0 = любой доступный порт
+                    }
+                    catch
+                    {
+                        // Если не удалось привязать к конкретному интерфейсу, используем IPAddress.Any
+                        socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+                    }
+                }
+                else
+                {
+                    socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+                }
+
+                MemoryStream stream = new MemoryStream();
+                XmlSerializer serializer = new XmlSerializer(typeof(Message));
+                serializer.Serialize(stream, message);
+                byte[] arr = stream.ToArray();
+                stream.Close();
+                socket.SendTo(arr, ipEndPoint);
+                socket.Shutdown(SocketShutdown.Send);
+                socket.Close();
+            }
+            catch (Exception ex)
+            {
+                // Логируем ошибку, но не прерываем выполнение
+                System.Diagnostics.Debug.WriteLine($"SendMulticastMessage error: {ex.Message}");
+            }
+        }
+        
         // отправление сообщения
         private async void button1_Click(object sender, EventArgs e)
         {
@@ -358,32 +443,11 @@ namespace Datagram_sockets
             
             await Task.Run(() =>
             {
-                try
-                {
-                    IPAddress ip = IPAddress.Parse("235.0.0.0");
-                    IPEndPoint ipEndPoint = new IPEndPoint(ip, 49152);
-
-                    Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 2);
-                    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ip));
-
-                    MemoryStream stream = new MemoryStream();
-                    XmlSerializer serializer = new XmlSerializer(typeof(Message));
-                    Message m = new Message();
-                    m.mes = messageText;
-                    m.user = currentNickname;
-                    m.messageType = "chat";
-                    serializer.Serialize(stream, m);
-                    byte[] arr = stream.ToArray();
-                    stream.Close();
-                    socket.SendTo(arr, ipEndPoint);
-                    socket.Shutdown(SocketShutdown.Send);
-                    socket.Close();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("Send error: " + ex.Message);
-                }
+                Message m = new Message();
+                m.mes = messageText;
+                m.user = currentNickname;
+                m.messageType = "chat";
+                SendMulticastMessage(m);
             });
         }
         
@@ -408,33 +472,24 @@ namespace Datagram_sockets
         // Отправка уведомления о подключении
         private async void SendJoinNotification()
         {
-            await Task.Run(() =>
+            await Task.Run(async () =>
             {
-                try
+                // Отправляем уведомление о подключении
+                Message joinMsg = new Message();
+                joinMsg.user = currentNickname;
+                joinMsg.messageType = "join";
+                joinMsg.mes = "";
+                SendMulticastMessage(joinMsg);
+                
+                // Отправляем несколько heartbeat сообщений подряд для быстрого обнаружения
+                for (int i = 0; i < 3; i++)
                 {
-                    IPAddress ip = IPAddress.Parse("235.0.0.0");
-                    IPEndPoint ipEndPoint = new IPEndPoint(ip, 49152);
-
-                    Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 2);
-                    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ip));
-
-                    MemoryStream stream = new MemoryStream();
-                    XmlSerializer serializer = new XmlSerializer(typeof(Message));
-                    Message m = new Message();
-                    m.user = currentNickname;
-                    m.messageType = "join";
-                    m.mes = ""; // пустое сообщение для уведомления
-                    serializer.Serialize(stream, m);
-                    byte[] arr = stream.ToArray();
-                    stream.Close();
-                    socket.SendTo(arr, ipEndPoint);
-                    socket.Shutdown(SocketShutdown.Send);
-                    socket.Close();
-                }
-                catch
-                {
-                    // Игнорируем ошибки при отправке уведомления о подключении
+                    await Task.Delay(300); // Небольшая задержка между сообщениями
+                    Message heartbeatMsg = new Message();
+                    heartbeatMsg.user = currentNickname;
+                    heartbeatMsg.messageType = "heartbeat";
+                    heartbeatMsg.mes = "";
+                    SendMulticastMessage(heartbeatMsg);
                 }
             });
         }
@@ -442,32 +497,32 @@ namespace Datagram_sockets
         // Отправка уведомления об отключении
         private void SendLeaveNotification()
         {
-            try
+            Message leaveMsg = new Message();
+            leaveMsg.user = currentNickname;
+            leaveMsg.messageType = "leave";
+            leaveMsg.mes = "";
+            SendMulticastMessage(leaveMsg);
+        }
+        
+        // Периодическая отправка heartbeat сообщений для обнаружения участников
+        private async void StartHeartbeat()
+        {
+            await Task.Run(async () =>
             {
-                IPAddress ip = IPAddress.Parse("235.0.0.0");
-                IPEndPoint ipEndPoint = new IPEndPoint(ip, 49152);
-
-                Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 2);
-                socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ip));
-
-                MemoryStream stream = new MemoryStream();
-                XmlSerializer serializer = new XmlSerializer(typeof(Message));
-                Message m = new Message();
-                m.user = currentNickname;
-                m.messageType = "leave";
-                m.mes = ""; // пустое сообщение для уведомления
-                serializer.Serialize(stream, m);
-                byte[] arr = stream.ToArray();
-                stream.Close();
-                socket.SendTo(arr, ipEndPoint);
-                socket.Shutdown(SocketShutdown.Send);
-                socket.Close();
-            }
-            catch
-            {
-                // Игнорируем ошибки при отправке уведомления об отключении
-            }
+                // Небольшая задержка перед первым heartbeat
+                await Task.Delay(2000);
+                
+                while (true)
+                {
+                    Message heartbeatMsg = new Message();
+                    heartbeatMsg.user = currentNickname;
+                    heartbeatMsg.messageType = "heartbeat";
+                    heartbeatMsg.mes = "";
+                    SendMulticastMessage(heartbeatMsg);
+                    
+                    await Task.Delay(5000); // Отправляем heartbeat каждые 5 секунд
+                }
+            });
         }
         
         // Обработчик смены nickname
@@ -502,26 +557,12 @@ namespace Datagram_sockets
             {
                 try
                 {
-                    IPAddress ip = IPAddress.Parse("235.0.0.0");
-                    IPEndPoint ipEndPoint = new IPEndPoint(ip, 49152);
-
-                    Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 2);
-                    socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(ip));
-
-                    MemoryStream stream = new MemoryStream();
-                    XmlSerializer serializer = new XmlSerializer(typeof(Message));
                     Message m = new Message();
                     m.user = newNickname;
                     m.oldNickname = oldNickname;
                     m.messageType = "nickname_change";
-                    m.mes = ""; // пустое сообщение для уведомления
-                    serializer.Serialize(stream, m);
-                    byte[] arr = stream.ToArray();
-                    stream.Close();
-                    socket.SendTo(arr, ipEndPoint);
-                    socket.Shutdown(SocketShutdown.Send);
-                    socket.Close();
+                    m.mes = "";
+                    SendMulticastMessage(m);
                 }
                 catch (Exception ex)
                 {
