@@ -34,7 +34,9 @@ namespace Datagram_sockets
         private string localIP;
         private Dictionary<string, DateTime> users = new Dictionary<string, DateTime>(); // nickname (IP) -> DateTime
         private Dictionary<string, string> userNicknames = new Dictionary<string, string>(); // IP -> nickname
+        private Dictionary<string, DateTime> sentMessages = new Dictionary<string, DateTime>(); // хеш сообщения -> время отправки
         private const int USER_TIMEOUT_SECONDS = 30;
+        private const int MESSAGE_DEDUP_SECONDS = 3; // окно для предотвращения дублирования
 
         public Form1()
         {
@@ -114,12 +116,6 @@ namespace Datagram_sockets
                         Message m = serializer.Deserialize(stream) as Message;
                         stream.Close();
                         
-                        // Пропускаем собственные сообщения (определяем по IP)
-                        if (clientIP == localIP)
-                        {
-                            continue;
-                        }
-                        
                         // Определяем отображаемое имя пользователя
                         string displayName = m.user;
                         lock (userNicknames)
@@ -132,6 +128,30 @@ namespace Datagram_sockets
                             {
                                 userNicknames[clientIP] = m.user;
                                 displayName = m.user;
+                            }
+                        }
+                        
+                        // Проверяем, не было ли это сообщение уже отправлено нами (для предотвращения дублирования)
+                        if (m.messageType == "chat" && clientIP == localIP)
+                        {
+                            string messageHash = $"{m.user}:{m.mes}";
+                            lock (sentMessages)
+                            {
+                                if (sentMessages.ContainsKey(messageHash))
+                                {
+                                    // Проверяем, не прошло ли слишком много времени
+                                    TimeSpan elapsed = DateTime.Now - sentMessages[messageHash];
+                                    if (elapsed.TotalSeconds < MESSAGE_DEDUP_SECONDS)
+                                    {
+                                        // Это наше недавно отправленное сообщение, пропускаем его
+                                        continue;
+                                    }
+                                    else
+                                    {
+                                        // Удаляем старую запись
+                                        sentMessages.Remove(messageHash);
+                                    }
+                                }
                             }
                         }
                         
@@ -238,6 +258,18 @@ namespace Datagram_sockets
                             UpdateUsersList();
                         }
                     }
+                    
+                    // Очищаем старые записи отправленных сообщений
+                    lock (sentMessages)
+                    {
+                        var expiredMessages = sentMessages.Where(m => 
+                            (DateTime.Now - m.Value).TotalSeconds > MESSAGE_DEDUP_SECONDS * 2
+                        ).ToList();
+                        foreach (var msg in expiredMessages)
+                        {
+                            sentMessages.Remove(msg.Key);
+                        }
+                    }
                 }
             });
         }
@@ -253,10 +285,12 @@ namespace Datagram_sockets
             string messageText = textBoxMessage.Text;
             textBoxMessage.Clear();
             
-            // Добавляем собственное сообщение в чат сразу
-            string ownMessage = $"[{DateTime.Now:HH:mm:ss}] You: {messageText}";
-            listBoxMessages.Items.Add(ownMessage);
-            listBoxMessages.TopIndex = listBoxMessages.Items.Count - 1;
+            // Создаем хеш сообщения для предотвращения дублирования
+            string messageHash = $"{currentNickname}:{messageText}";
+            lock (sentMessages)
+            {
+                sentMessages[messageHash] = DateTime.Now;
+            }
             
             await Task.Run(() =>
             {
