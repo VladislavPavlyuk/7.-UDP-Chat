@@ -255,6 +255,9 @@ namespace Datagram_sockets
                             }
                             
                             // Проверяем, не было ли это сообщение уже отправлено нами (для предотвращения дублирования)
+                            // Пропускаем только очень недавно отправленные сообщения (менее 50 миллисекунд),
+                            // чтобы избежать мгновенного дублирования, но показываем сообщения, которые вернулись через multicast
+                            bool skipOwnMessage = false;
                             if (m.messageType == "chat" && clientIP == localIP)
                             {
                                 string messageHash = $"{m.user}:{m.mes}";
@@ -262,24 +265,30 @@ namespace Datagram_sockets
                                 {
                                     if (sentMessages.ContainsKey(messageHash))
                                     {
-                                        // Проверяем, не прошло ли слишком много времени
+                                        // Проверяем, не прошло ли слишком мало времени (менее 50 миллисекунд)
                                         TimeSpan elapsed = DateTime.Now - sentMessages[messageHash];
-                                        if (elapsed.TotalSeconds < MESSAGE_DEDUP_SECONDS)
+                                        if (elapsed.TotalMilliseconds < 50)
                                         {
-                                            // Это наше недавно отправленное сообщение, пропускаем его
-                                            continue;
+                                            // Это наше только что отправленное сообщение (возможно локальный echo), пропускаем его
+                                            skipOwnMessage = true;
                                         }
                                         else
                                         {
-                                            // Удаляем старую запись
+                                            // Прошло достаточно времени - это сообщение вернулось через multicast, 
+                                            // удаляем из списка отправленных и показываем его
                                             sentMessages.Remove(messageHash);
                                         }
                                     }
                                 }
                             }
                             
+                            if (skipOwnMessage)
+                            {
+                                continue; // Пропускаем очень свежее собственное сообщение
+                            }
+                            
                             // Обработка различных типов сообщений
-                                if (m.messageType == "nickname_change")
+                            if (m.messageType == "nickname_change")
                             {
                                 string oldDisplayName = displayName;
                                 lock (userNicknames)
@@ -311,7 +320,7 @@ namespace Datagram_sockets
                                 
                                 UpdateUsersList();
                             }
-                                else if (m.messageType == "join")
+                            else if (m.messageType == "join")
                             {
                                 // Уведомление о подключении (пропускаем собственные уведомления)
                                 if (clientIP == localIP)
@@ -595,11 +604,15 @@ namespace Datagram_sockets
                 string messageText = textBoxMessage.Text;
                 textBoxMessage.Clear();
                 
+                // Показываем временное сообщение о отправке
+                ShowInfo($"Sending message...");
+                
                 // Создаем хеш сообщения для предотвращения дублирования
                 string messageHash = $"{currentNickname}:{messageText}";
+                DateTime sendTime = DateTime.Now;
                 lock (sentMessages)
                 {
-                    sentMessages[messageHash] = DateTime.Now;
+                    sentMessages[messageHash] = sendTime;
                 }
                 
                 await Task.Run(() =>
@@ -611,7 +624,6 @@ namespace Datagram_sockets
                         m.user = currentNickname;
                         m.messageType = "chat";
                         SendMulticastMessage(m);
-                        ShowInfo("Message sent");
                     }
                     catch (Exception ex)
                     {
